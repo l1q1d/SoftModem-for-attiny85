@@ -1,5 +1,5 @@
-#ifndef SoftModem_h
-#define SoftModem_h
+#ifndef SoftModemTiny_h
+#define SoftModemTiny_h
 
 #include <Stream.h>
 #include <inttypes.h>
@@ -47,7 +47,7 @@
 
 #define SOFT_MODEM_DEBUG       (0)
 
-class SoftModem : public Stream
+class SoftModemTiny : public Stream
 {
 private:
 	volatile uint8_t *_txPortReg;
@@ -63,8 +63,8 @@ private:
 	uint8_t _highCount;
 	void modulate(uint8_t b);
 public:
-	SoftModem();
-	~SoftModem();
+	SoftModemTiny();
+	~SoftModemTiny();
 	void begin(void);
 	void end(void);
 	virtual int available();
@@ -74,7 +74,7 @@ public:
 	virtual void write(uint8_t data);
 	void demodulate(void);
 	void recv(void);
-	static SoftModem *activeObject;
+	static SoftModemTiny *activeObject;
 #if SOFT_MODEM_DEBUG
 	void handleAnalogComp(bool high);
 	void demodulateTest(void);

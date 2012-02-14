@@ -2,18 +2,17 @@
 #include <WConstants.h>
 #include <avr/interrupt.h>
 #include <pins_arduino.h>
-#include "SoftModem.h"
+#include "SoftModemTiny.h"
 
-#define SOFT_MODEM_TX_PIN      (3)
-#define SOFT_MODEM_RX_PIN1     (6)  // AIN0
-#define SOFT_MODEM_RX_PIN2     (7)  // AIN1
+#define SOFT_MODEM_TX_PIN      (1)
+#define SOFT_MODEM_RX_PIN1     (0)  // AIN0
 
-SoftModem *SoftModem::activeObject = 0;
+SoftModemTiny *SoftModemTiny::activeObject = 0;
 
-SoftModem::SoftModem() {
+SoftModemTiny::SoftModemTiny() {
 }
 
-SoftModem::~SoftModem() {
+SoftModemTiny::~SoftModemTiny() {
 	end();
 }
 
@@ -76,13 +75,10 @@ static volatile uint8_t *portLEDReg;
 static uint8_t portLEDMask;
 #endif
 
-void SoftModem::begin(void)
+void SoftModemTiny::begin(void)
 {
 	pinMode(SOFT_MODEM_RX_PIN1, INPUT);
 	digitalWrite(SOFT_MODEM_RX_PIN1, LOW);
-
-	pinMode(SOFT_MODEM_RX_PIN2, INPUT);
-	digitalWrite(SOFT_MODEM_RX_PIN2, LOW);
 
 	pinMode(SOFT_MODEM_TX_PIN, OUTPUT);
 	digitalWrite(SOFT_MODEM_TX_PIN, LOW);
@@ -100,21 +96,21 @@ void SoftModem::begin(void)
 	_recvStat = 0xff;
 	_recvBufferHead = _recvBufferTail = 0;
 
-	SoftModem::activeObject = this;
+	SoftModemTiny::activeObject = this;
 
-	_lastTCNT = TCNT2;
+	_lastTCNT = TCNT0;
 	_lastDiff = _lowCount = _highCount = 0;
 
-	TCCR2A = 0;
-	TCCR2B = TIMER_CLOCK_SELECT;
+	TCCR0A = 0;
+	TCCR0B = TIMER_CLOCK_SELECT;
 	ACSR   = _BV(ACIE) | _BV(ACIS1);
 }
 
-void SoftModem::end(void)
+void SoftModemTiny::end(void)
 {
 	ACSR   &= ~(_BV(ACIE));
-	TIMSK2 &= ~(_BV(OCIE2A));
-	SoftModem::activeObject = 0;
+	TIMSK &= ~(_BV(OCIE0A));
+	SoftModemTiny::activeObject = 0;
 }
 
 enum {
@@ -130,13 +126,13 @@ enum {
 	FSK_STOP_BIT
 };
 
-void SoftModem::demodulate(void)
+void SoftModemTiny::demodulate(void)
 {
-	uint8_t t = TCNT2;
+	uint8_t t = TCNT0;
 	uint8_t diff;
 	
-	if(TIFR2 & _BV(TOV2)){
-		TIFR2 |= _BV(TOV2);
+	if(TIFR & _BV(TOV0)){
+		TIFR |= _BV(TOV0);
 		diff = (255 - _lastTCNT) + t + 1;
 	}
 	else{
@@ -163,9 +159,9 @@ void SoftModem::demodulate(void)
 			_recvStat  = FSK_START_BIT;
 			_highCount = 0;
 			_recvBits  = 0;
-			OCR2A      = t + (uint8_t)(TCNT_BIT_PERIOD) - _lowCount; // 1 bit period after detected
-			TIFR2     |= _BV(OCF2A);
-			TIMSK2    |= _BV(OCIE2A);
+			OCR0A      = t + (uint8_t)(TCNT_BIT_PERIOD) - _lowCount; // 1 bit period after detected
+			TIFR     |= _BV(OCF0A);
+			TIMSK    |= _BV(OCIE0A);
 		}
 	}
 	else if(_lastDiff <= (uint8_t)(TCNT_HIGH_TH_H)){
@@ -183,11 +179,11 @@ void SoftModem::demodulate(void)
 
 ISR(ANALOG_COMP_vect)
 {
-	SoftModem *act = SoftModem::activeObject;
+	SoftModemTiny *act = SoftModemTiny::activeObject;
 	act->demodulate();
 }
 
-void SoftModem::recv(void)
+void SoftModemTiny::recv(void)
 {
 	uint8_t high;
 	if(_highCount > _lowCount){
@@ -228,7 +224,7 @@ void SoftModem::recv(void)
 	else{
 	end_recv:
 		_recvStat = 0xff;
-		TIMSK2 &= ~_BV(OCIE2A);
+		TIMSK &= ~_BV(OCIE0A);
 #if SOFT_MODEM_DEBUG
 		errs = _errs;
 		_errs = 0;
@@ -240,20 +236,20 @@ void SoftModem::recv(void)
 
 ISR(TIMER2_COMPA_vect)
 {
-	OCR2A += (uint8_t)TCNT_BIT_PERIOD;
-	SoftModem *act = SoftModem::activeObject;
+	OCR0A += (uint8_t)TCNT_BIT_PERIOD;
+	SoftModemTiny *act = SoftModemTiny::activeObject;
 	act->recv();
 #if SOFT_MODEM_DEBUG
 	*portLEDReg ^= portLEDMask;
 #endif  
 }
 
-int SoftModem::available()
+int SoftModemTiny::available()
 {
 	return (_recvBufferTail + SOFT_MODEM_MAX_RX_BUFF - _recvBufferHead) & (SOFT_MODEM_MAX_RX_BUFF - 1);
 }
 
-int SoftModem::read()
+int SoftModemTiny::read()
 {
 	if(_recvBufferHead == _recvBufferTail)
 		return -1;
@@ -262,19 +258,19 @@ int SoftModem::read()
 	return d;
 }
 
-int SoftModem::peek()
+int SoftModemTiny::peek()
 {
 	if(_recvBufferHead == _recvBufferTail)
 		return -1;
 	return _recvBuffer[_recvBufferHead];
 }
 
-void SoftModem::flush()
+void SoftModemTiny::flush()
 {
 	_recvBufferHead = _recvBufferTail = 0;
 }
 
-void SoftModem::modulate(uint8_t b)
+void SoftModemTiny::modulate(uint8_t b)
 {
 	uint8_t cnt,tcnt,tcnt2,adj;
 	if(b){
@@ -289,21 +285,21 @@ void SoftModem::modulate(uint8_t b)
 	do {
 		cnt--;
 		{
-			OCR2B += tcnt;
-			TIFR2 |= _BV(OCF2B);
-			while(!(TIFR2 & _BV(OCF2B)));
+			OCR0B += tcnt;
+			TIFR |= _BV(OCF0B);
+			while(!(TIFR & _BV(OCF0B)));
 		}
 		*_txPortReg ^= _txPortMask;
 		{
-			OCR2B += tcnt2;
-			TIFR2 |= _BV(OCF2B);
-			while(!(TIFR2 & _BV(OCF2B)));
+			OCR0B += tcnt2;
+			TIFR |= _BV(OCF0B);
+			while(!(TIFR & _BV(OCF0B)));
 		}
 		*_txPortReg ^= _txPortMask;
 	} while (cnt);
 }
 
-void SoftModem::write(uint8_t data)
+void SoftModemTiny::write(uint8_t data)
 {
 	static unsigned long lastTransmissionTime = 0;
 	if((micros() - lastTransmissionTime) > (uint16_t)(SOFT_MODEM_LOW_USEC*2)){
@@ -328,7 +324,7 @@ void SoftModem::write(uint8_t data)
 #if SOFT_MODEM_DEBUG
 #include <HardwareSerial.h>
 
-void SoftModem::handleAnalogComp(bool high)
+void SoftModemTiny::handleAnalogComp(bool high)
 {
 	int cnt = (high ? SOFT_MODEM_HIGH_CNT : SOFT_MODEM_LOW_CNT);
 	int usec = (high ? SOFT_MODEM_HIGH_USEC : SOFT_MODEM_LOW_USEC);
@@ -342,7 +338,7 @@ void SoftModem::handleAnalogComp(bool high)
 		delayMicroseconds(adj);
 }
 
-void SoftModem::demodulateTest(void)
+void SoftModemTiny::demodulateTest(void)
 {
 	Serial.print("bit period = ");
 	Serial.println(SOFT_MODEM_BIT_PERIOD);
